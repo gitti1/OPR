@@ -1,0 +1,1060 @@
+---
+title: "OpenAIRE Open Peer Review (OPR) Survey 2016"
+author: "Birgit Schmidt"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+
+```{r read_libraries, echo=FALSE, cache=TRUE, message=FALSE} 
+# reading libraries
+library(ggplot2)
+library(RColorBrewer)
+library(reshape2)
+library(gmodels) # stats
+library(vcd) # stats
+library(plyr)
+library(stats)
+library(likert) # compare http://jason.bryer.org/likert/
+library(xtable)
+library(graphics)
+library(colorspace) # for rainbow_hcl color palette
+```
+
+```{r read_data, echo=FALSE, cache=FALSE}
+# Read data file, ignore line 2 (contains details on the variables)
+all_content = readLines("https://zenodo.org/record/439531/files/openaire_survey_open_peer_review_2016.csv")
+skip_second = all_content[-2]
+# load original data
+OPRSdata_orig <- read.csv(textConnection(skip_second), header=TRUE, sep=";", na.strings=c("-9"), stringsAsFactors=TRUE)
+# copy for data processing
+OPRSdata <- OPRSdata_orig
+dim(OPRSdata)
+```
+
+# Section DG: Demographics
+```{r demographics, echo=FALSE, cache=FALSE, message=FALSE}
+library(ggplot2)
+library(RColorBrewer)
+
+#DG02 Age
+#1 = under 24
+#2 = 25-34
+#3 = 35-44
+#4 = 45-54
+#5 = 55-64
+#6 = over 64
+#-9 = Not answered
+
+OPRSdata$DG02 <- ordered(OPRSdata$DG02, levels=c(1:6), labels=c("under 25", "25-34", "35-44", "45-54", "55-64", "over 64"))
+
+tDG02<- table(OPRSdata$DG02)
+ptDG02 <- round(tDG02/sum(tDG02)*100,1)
+    
+tDG02_df <- as.data.frame(tDG02)
+tDG02_df$Perc <- round(tDG02_df$Freq/sum(tDG02_df$Freq)*100,1)
+tDG02_df_sorted <- tDG02_df[order(tDG02_df$Perc, decreasing=TRUE), ]
+tDG02_df
+
+ggplot(data=subset(OPRSdata, !is.na(DG02)), aes(x=DG02, fill=DG02)) + geom_bar(show.legend = FALSE)   +     scale_fill_brewer(palette="Spectral") + coord_flip() + ggtitle("Responses by age group") +  xlab("Age group") +  ylab("Responses")
+
+# average age (slightly higher than mid point in each interval as they are even-sized)
+avAge <- (24* tDG02[1] + 31* tDG02[2] + 40* tDG02[3] + 50* tDG02[2] + 60* tDG02[2])/sum(tDG02)
+
+# age cluster - combine all under age 35 as the under 25 age-group is very small
+OPRSdata$age <- ifelse(OPRSdata$DG02 %in% c(1,2), 2, OPRSdata$DG02)
+OPRSdata$age <- ordered(OPRSdata$age, levels=c(2:6), labels=c("under 35", "35-44", "45-54", "55-64", "over 64"))
+table(OPRSdata$age)
+
+#DG03 Region
+#1 = Africa
+#2 = America (use "Americas" in write-up)
+#3 = Asia
+#4 = Europe
+#5 = Oceania/Australia
+#-9 = Not answered
+
+OPRSdata$DG03 <- ordered(OPRSdata$DG03, levels=c(1:5), labels=c("Africa", "America", "Asia", "Europe", "Oceania/Australia"))
+tDG03 <- table(OPRSdata$DG03)
+table(OPRSdata$DG03, useNA="ifany")
+#addmargins(round(prop.table(tDG03)*100, 1))
+#table(OPRSdata$DG03, useNA="ifany")
+#   1    2    3    4    5   57   58   62   78 <NA> 
+#  80  685  302 1855  123    1    2    3    1   10 
+tDG03_df <- as.data.frame(table(OPRSdata$DG03))
+tDG03_df$Perc <- round(tDG03_df$Freq/sum(table(OPRSdata$DG03))*100,3)
+tDG03_df_sorted <- tDG03_df[order(tDG03_df$Perc, decreasing=TRUE), ]
+tDG03_df_sorted
+
+#[DG04] Subject
+#"What subject discipline are you specialized in?"
+
+#1 = Agriculture and Food sciences
+#2 = Arts and Architecture
+#3 = Biology and Life sciences
+#4 = Chemistry
+#5 = Computer Sciences / IT
+#6 = Earth and environmental Sciences
+#7 = Economics
+#8 = Health Sciences
+#9 = History and Archeology
+#10 = Languages and Literature
+#11 = Law and Political science
+#12 = Mathematics and Statistics
+#13 = Physics and Astronomy
+#14 = Psychology and Philosophy
+#15 = Social Sciences
+#16 = Technology and Engineering, 
+#-1 = None of the above
+#-9 = Not answered
+# replace "None of the above" by "Other disciplines"
+
+## cluster by STM vs. HSS
+## note: mistakenly put 2 in STM cluster for report, replace figures as well!
+OPRSdata$disccl <- ifelse(OPRSdata$DG04 %in% c(1, 3:6, 8, 12:13, 16), "STM", OPRSdata$DG04)
+OPRSdata$disccl <- ifelse(OPRSdata$DG04 %in% c(2, 7, 9:11, 14:15), "HSS", OPRSdata$disccl)
+OPRSdata$disccl <- ifelse(OPRSdata$DG04 %in% c(-1, NA), NA, OPRSdata$disccl)
+tbdisccl <- table(OPRSdata$disccl, useNA="ifany")
+tbdisccl
+# HSS  STM <NA> 
+# 263 2743   56 
+
+round(tbdisccl/sum(tbdisccl)*100, 1)
+# HSS  STM <NA> 
+# 8.6 89.6  1.8 
+
+# cluster the rest of HSS while keeping Social Sciences (over 100 answers)
+OPRSdata$DG04cl <- ifelse(OPRSdata$DG04 %in% c(2, 7, 9:11, 14), 99, OPRSdata$DG04)
+table(OPRSdata$DG04cl)
+OPRSdata$DG04cl <- ordered(OPRSdata$DG04cl, levels=c(-1, 1, 3:6, 8, 12:13, 15:16, 99), labels=c("Other Disciplines", "Agriculture and Food Sciences", "Biology and Life Sciences","Chemistry", "Computer Sciences / IT", "Earth and Environmental Sciences", "Health Sciences", "Mathematics and Statistics", "Physics and Astronomy", "Social Sciences", "Technology and Engineering", "Other HSS"))
+table(OPRSdata$DG04cl)
+OPRSdata_ordDG04cl <- within(OPRSdata, DG04cl <- factor(DG04cl, levels=names(sort(table(DG04cl), decreasing=FALSE))))
+
+OPRSdata$DG04 <- ordered(OPRSdata$DG04, levels=c(-1, 1:16), labels=c("Other Disciplines", "Agriculture and Food Sciences", "Arts and Architecture", "Biology and Life Sciences","Chemistry", "Computer Sciences / IT", "Earth and Environmental Sciences", "Economics", "Health Sciences", "History and Archeology", "Languages and Literature", "Law and Political Science", "Mathematics and Statistics", "Physics and Astronomy", "Psychology and Philosophy", "Social Sciences", "Technology and Engineering"))
+tDG04 <- table(OPRSdata$DG04)
+tDG04_sorted <- sort(tDG04, decreasing=TRUE)
+tDG04_df <- as.data.frame(tDG04_sorted)
+tDG04_df$disc <- row.names(tDG04_df)
+colnames(tDG04_df)[1] <- "Discipline"
+tDG04_df$Perc <- round(tDG04_df$Freq/sum(table(OPRSdata$DG04))*100,2)
+
+tDG04_df[,c(1,2,4)]
+
+# Simple bar plot
+#par(las=2)
+#mp <- barplot(tDG04_sorted, axisnames=F, col=terrain.colors(12), beside=T)
+#legend("topright", legend=names(tDG04_sorted), cex=0.75, fill=terrain.colors(12)) 
+#title("Disciplines")
+
+tDG04_df$disc <- ordered(tDG04_df$disc, levels=c(-1, 1:16), labels=c("None of the above", "Agriculture and Food sciences", "Arts and Architecture", "Biology and Life sciences","Chemistry", "Computer Sciences / IT", "Earth and environmental Sciences", "Economics", "Health Sciences", "History and Archeology", "Languages and Literature", "Law and Political science", "Mathematics and Statistics", "Physics and Astronomy", "Psychology and Philosophy", "Social Sciences", "Technology and Engineering"))
+
+# Alternative bar plot based on ggplot
+library(ggplot2)
+library(grDevices)
+
+colourCount = length(unique(OPRSdata$DG04))
+#getPalette = colorRampPalette(brewer.pal(9, "Set2"))
+OPRSdata_ordDG04 <- within(OPRSdata, DG04 <- factor(DG04, levels=names(sort(table(DG04), decreasing=FALSE))))
+
+# Responses by discipline (fill=DG02 age group, fill=DG03 region)
+ggplot(data=subset(OPRSdata_ordDG04, !is.na(DG04)), aes(x=DG04, fill=DG04)) + geom_bar(fill="lightblue") + coord_flip() + ggtitle("Responses by discipline") +  xlab("Discipline") + ylab("Responses") + guides(fill=FALSE)
+# + scale_fill_hue()
+#+ scale_fill_brewer(palette="YlGnBu")
+# + scale_fill_brewer(palette=getPalette(colourCount), guide=FALSE)
+
+# clustered version 
+ggplot(data=subset(OPRSdata_ordDG04cl, !is.na(DG04cl)), aes(x=DG04cl, fill=DG04cl)) + geom_bar(fill="lightblue") + coord_flip() + ggtitle("Responses by discipline (HSS disciplines clustered)") +  xlab("Discipline") + ylab("Responses") + guides(fill=FALSE)
+```
+
+### Scholarly communication vs. open peer review experiences 
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+#[DG05] !Multiple Choice
+#"In which scholarly communication roles do you have experience?"
+
+#DG05 role: Residual option (negative) or number of selected options
+#-1 = None of the above
+#DG05_01 Editor
+#DG05_02 Author
+#DG05_04 Publisher
+#DG05_05 Reviewer
+#DG05_06 Other(s), please specify
+#1 = Not checked
+#2 = Checked
+#DG05_06a Other(s), please specify (free text)
+#Free text
+
+# number of selected options
+OPRSdata$DG05 <- ordered(OPRSdata$DG05, levels=c(1:5, -1))
+tDG05 <- table(OPRSdata$DG05)
+tDG05_df <- as.data.frame(tDG05)
+tDG05_df$Perc <- (round(tDG05_df$Freq / sum(tDG05)*100, 1))
+#tDG05_df
+avDG05 <- round(sum((as.numeric(tDG05_df$Var1)*tDG05_df$Freq)[1:5])/sum(tDG05_df$Freq[1:5]),1)
+
+#[DG06] !Multiple Choice
+#opr-role
+#"Do you have personal experience of open peer review as"
+
+#DG06 opr-role: Residual option (negative) or number of selected options
+#-1 = None of the above
+#DG06_01 Editor
+#DG06_02 Author
+#DG06_04 Publisher
+#DG06_05 Reviewer
+#DG06_06 Other(s), please specify
+#1 = Not checked
+#2 = Checked
+#DG06_06a Other(s), please specify (free text)
+#Free text
+
+# number of selected options
+OPRSdata$DG06 <- ordered(OPRSdata$DG06, levels=c(1:5, -1))
+tDG06 <- table(OPRSdata$DG06)
+tDG06_df <- as.data.frame(tDG06)
+tDG06_df$Perc <- (round(tDG06_df$Freq / sum(tDG06)*100, 1))
+#tDG06_df
+avDG06 <- round(sum((as.numeric(tDG06_df$Var1)*tDG06_df$Freq)[1:5])/sum(tDG06_df$Freq[1:5]),1)
+
+otherroleSC <- OPRSdata$DG05_06a[!(OPRSdata$DG05_06a %in% c("", " "))]
+# consider saving the file 
+#write.csv(otherroleSC, ".../otherroleSC.csv", row.names = FALSE)
+#length(otherroleSC)
+
+otherroleOPR <- OPRSdata$DG05_06a[!(OPRSdata$DG06_06a %in% c("", " "))]
+# consider saving the file 
+#write.csv(otherroleOPR, ".../OPR_survey/otherroleOPR.csv", row.names = FALSE)
+#length(otherroleOPR)
+
+library(dplyr)
+vars <- c("DG06_01", "DG06_02", "DG06_04", "DG06_05")
+OPRroles <- select(OPRSdata, one_of(vars))
+
+OPRroles <- lapply(OPRroles, factor, levels=c(1, 2), labels=c("no", "yes"))
+OPRroles <- as.data.frame(OPRroles)
+#OPRroles <- rename(OPRroles, c("DG06_01"="editor", "DG06_02"="author", "DG06_04"="publisher", "DG06_05"="reviewer", "DG06_06"="other"))
+
+library(ggplot2)
+library(reshape2)
+# some glitch in the following (only for plotting), therefore hard-coded in df
+tabOPRroles <- data.frame(yes=c(sum(OPRSdata$DG06_01=="2"), sum(OPRSdata$DG06_02=="2"), sum(OPRSdata$DG06_04=="2"), sum(OPRSdata$DG06_05=="2"), sum(OPRSdata$DG06_06=="2")), no=c(sum(OPRSdata$DG06_01=="1"), sum(OPRSdata$DG06_02=="1"), sum(OPRSdata$DG06_04=="1"), sum(OPRSdata$DG06_05=="1"), sum(OPRSdata$DG06_06=="1")), role=c("editor", "author", "publisher", "reviewer", "other"))
+tabOPRroles <- melt(tabOPRroles)
+
+# order the role factor depending on decreasing positive answers (cf http://rstudio-pubs-static.s3.amazonaws.com/7433_4537ea5073dc4162950abb715f513469.html)
+#df <- data.frame(no=c(2468, 1132, 2994, 1254, 3027), yes=c(594, 1930, 68, 1808, 35), role=factor(c("editor", "author", "publisher", "reviewer", "other")))
+df <- data.frame(no=tabOPRroles$value[6:10], yes=tabOPRroles$value[1:5], role=factor(c("editor", "author", "publisher", "reviewer", "other")))
+df$role <- factor(df$role, levels=df$role[order(df$yes, decreasing=TRUE)])
+df <- melt(df)
+
+ggplot(df, aes(role, value, fill=variable)) + ggtitle("Experiences with Open Peer Review") +  xlab("Role") +  
+ ylab("Percentage") + geom_bar(position="fill", stat="identity") + guides(fill=guide_legend(reverse=TRUE)) 
+#+ coord_flip()
+
+# percentage of respondents with experience in OPR as editor OR author OR reviewer ("ear")
+OPRexp_ear <- filter(OPRSdata, DG06_01==2 | DG06_02==2 | DG06_05==2)
+nex <- round(nrow(OPRexp_ear)/nrow(OPRSdata)*100, 2)
+
+# introduce new variable, experience with OPR in any role
+OPRSdata$opr <- ifelse(OPRSdata$DG06_01==2 | OPRSdata$DG06_02==2 | OPRSdata$DG06_05==2 | OPRSdata$DG06_04==2, 1, 0)
+
+OPRSdata_HSS <- filter(OPRSdata, disccl=="HSS")
+OPRSdata_STM <- filter(OPRSdata, disccl=="STM")
+
+tabOPRroles_STM <- data.frame(yes=c(sum(OPRSdata_STM$DG06_01=="2"), sum(OPRSdata_STM$DG06_02=="2"), sum(OPRSdata_STM$DG06_04=="2"), sum(OPRSdata_STM$DG06_05=="2"), sum(OPRSdata_STM$DG06_06=="2")), no=c(sum(OPRSdata_STM$DG06_01=="1"), sum(OPRSdata_STM$DG06_02=="1"), sum(OPRSdata_STM$DG06_04=="1"), sum(OPRSdata_STM$DG06_05=="1"), sum(OPRSdata_STM$DG06_06=="1")), role=c("editor", "author", "publisher", "reviewer", "other"))
+tabOPRroles_STM <- melt(tabOPRroles_STM)
+tabOPRroles_STM$perc <- round(tabOPRroles_STM$value/nrow(OPRSdata_STM)*100, 2)
+tabOPRroles_STM$disccl <- "STM"
+tabOPRroles_STM
+
+tabOPRroles_HSS <- data.frame(yes=c(sum(OPRSdata_HSS$DG06_01=="2"), sum(OPRSdata_HSS$DG06_02=="2"), sum(OPRSdata_HSS$DG06_04=="2"), sum(OPRSdata_HSS$DG06_05=="2"), sum(OPRSdata_HSS$DG06_06=="2")), no=c(sum(OPRSdata_HSS$DG06_01=="1"), sum(OPRSdata_HSS$DG06_02=="1"), sum(OPRSdata_HSS$DG06_04=="1"), sum(OPRSdata_HSS$DG06_05=="1"), sum(OPRSdata_HSS$DG06_06=="1")), role=c("editor", "author", "publisher", "reviewer", "other"))
+tabOPRroles_HSS <- melt(tabOPRroles_HSS)
+tabOPRroles_HSS$perc <- round(tabOPRroles_HSS$value/nrow(OPRSdata_HSS)*100, 2)
+tabOPRroles_HSS$disccl <- "HSS"
+tabOPRroles_HSS
+
+## Experiences with OPR roles by STM and HSS
+df_STM <- data.frame(no=tabOPRroles_STM$value[6:10], yes=tabOPRroles_STM$value[1:5],
+                 role=factor(c("editor", "author", "publisher", "reviewer", "other")))
+df_HSS <- data.frame(no=tabOPRroles_HSS$value[6:10], yes=tabOPRroles_HSS$value[1:5],
+                 role=factor(c("editor", "author", "publisher", "reviewer", "other")))
+df_STM$role <- factor(df_STM$role, levels=df_STM$role[order(df_STM$yes, decreasing=TRUE)])
+df_STM <- melt(df_STM)
+df_STM$disccl <- "STM"
+df_HSS$role <- factor(df_HSS$role, levels=df_HSS$role[order(df_HSS$yes, decreasing=TRUE)])
+df_HSS <- melt(df_HSS)
+df_HSS$disccl <- "HSS"
+# merged dataframe
+df_all <- rbind(df_STM, df_HSS)
+df_all$disccl <- factor(df_all$disccl, levels=c("STM", "HSS"))
+
+# panel plot OPR roles - STM vs. HSS
+par(mfrow=c(2,1))
+ggplot(df_STM, aes(role, value, fill=variable)) + ggtitle("Experiences with Open Peer Review - STM") +  xlab("Role") +   ylab("Percentage") + geom_bar(position="fill", stat="identity") + guides(fill=guide_legend(reverse=TRUE)) 
+ggplot(df_HSS, aes(role, value, fill=variable)) + ggtitle("Experiences with Open Peer Review - HSS") +  xlab("Role") +   ylab("Percentage") + geom_bar(position="fill", stat="identity") + guides(fill=guide_legend(reverse=TRUE)) 
+
+# panel plot OPR roles - STM vs. HSS
+ggplot(df_all, aes(role, value, fill=variable)) + ggtitle("Experiences with Open Peer Review - STM vs. HSS") +  xlab("Role") +   ylab("Percentage") + geom_bar(position="fill", stat="identity") + guides(fill=guide_legend(reverse=TRUE)) + facet_wrap(~ disccl, ncol=1)
+
+## OPR experiences from an regional perspective
+library(tidyverse)
+regOPR <- filter(OPRSdata, DG06_01==2 | DG06_02==2 | DG06_04==2 | DG06_05==2) 
+table(regOPR$DG03)
+round(table(regOPR$DG03)/table(OPRSdata$DG03)*100, 2)
+``` 
+
+Overall, we consider `r nrow(OPRSdata)` responses for OpenAIRE's Open Peer Review study, i.e. those which finalized the online survey. The majority of respondents provided information about their age group (N=`r sum(table(OPRSdata$DG02))`) `r tDG02[1]` were under 24 (`r ptDG02[1]`%), `r tDG02[2]` between 25 and 34 (`r ptDG02[2]`%), `r tDG02[3]` between 35 and 44 (`r ptDG02[3]`%), `r tDG02[4]` between 45 and 54 (`r ptDG02[4]`%), `r tDG02[5]` between 55 and 64 (`r ptDG02[5]`%), and `r tDG02[6]` over 64 (`r ptDG02[6]`%). 
+
+Of all respondents, when asked about their roles in scholarly communication (multiple choices were allowed, on average about `r avDG05` options were selected) `r table(OPRSdata$DG05_01)[2]` acted as editor (`r round(table(OPRSdata$DG05_01)[2]/sum(table(OPRSdata$DG05_01))*100, 1)`%), `r table(OPRSdata$DG05_02)[2]` acted as author (`r round(table(OPRSdata$DG05_02)[2]/sum(table(OPRSdata$DG05_02))*100, 1)`%), `r table(OPRSdata$DG05_04)[2]` acted as publisher (`r round(table(OPRSdata$DG05_04)[2]/sum(table(OPRSdata$DG05_04))*100, 1)`%), `r table(OPRSdata$DG05_05)[2]` acted as reviewer (`r round(table(OPRSdata$DG05_05)[2]/sum(table(OPRSdata$DG05_05))*100, 1)`%), and `r table(OPRSdata$DG05_06)[2]` in other roles (`r round(table(OPRSdata$DG05_06)[2]/sum(table(OPRSdata$DG05_06))*100, 1)`%).
+
+Of all respondents, when asked about their roles in open peer review (multiple choices were allowed, on average about `r avDG06` options were selected) `r table(OPRSdata$DG06_01)[2]` acted as editor (`r round(table(OPRSdata$DG06_01)[2]/sum(table(OPRSdata$DG06_01))*100, 1)`%), `r table(OPRSdata$DG06_02)[2]` acted as author (`r round(table(OPRSdata$DG06_02)[2]/sum(table(OPRSdata$DG06_02))*100, 1)`%), `r table(OPRSdata$DG06_04)[2]` acted as publisher (`r round(table(OPRSdata$DG06_04)[2]/sum(table(OPRSdata$DG06_04))*100, 1)`%), `r table(OPRSdata$DG06_05)[2]` acted as reviewer (`r round(table(OPRSdata$DG06_05)[2]/sum(table(OPRSdata$DG06_05))*100, 1)`%), and `r table(OPRSdata$DG06_06)[2]` in other roles (`r round(table(OPRSdata$DG06_06)[2]/sum(table(OPRSdata$DG06_06))*100, 1)`%).
+
+Overall, `r nex` % (N=`r nrow(OPRexp_ear)`) of all respondents reported experiences with open peer review as an editor, author or reviewer. 
+ 
+## Section Peer Review (PR): PR general
+```{r peer_review_general, echo=FALSE, cache=FALSE, message=FALSE}
+library(ggplot2)
+library(reshape2)
+
+#[PR01] !Horizontal Selection
+#PR system
+"Overall, how satisfied are you with the peer review system used by scholarly journals?"
+
+#1 = Very dissatisfied
+#2 = Dissatisfied
+#3 = Neither satisfied nor dissatisfied
+#4 = Satisfied
+#5 = Very satisfied
+#-1 = Don't know
+#-9 = Not answered
+
+## percentages + aggregation by pos/neg sentiment
+OPRSdata$PR01 <- ordered(OPRSdata$PR01, levels=c(1:5))
+tt01 <- with(OPRSdata, round(prop.table(table(OPRSdata$DG04, OPRSdata$PR01), 1)*100, 2))
+tt01_df <- as.data.frame.matrix(tt01)
+tt01_df$low <- tt01[,1]+tt01[,2]
+tt01_df$high <- tt01[,4]+tt01[,5]
+tt01_ord <- tt01_df[order(tt01_df$low, decreasing=T),]
+tt01_ord
+
+tt01_ord$Var1 <- row.names(tt01_ord)
+tt01_ord_melted <- melt(tt01_ord[ ,c(1:5, 8)])
+
+## with all levels, including "don't know"
+#OPRSdata$PR01 <- ordered(OPRSdata$PR01, levels=c(-1, 1:5), labels=c("Don't know", "Very dissatisfied", "Dissatisfied", "Neutral", "Satisfied", "Very satisfied"))
+
+## ignore the don't knows
+OPRSdata$PR01 <- ordered(OPRSdata$PR01, levels=c(1:5), labels=c("Very diss.", "Dissatisfied", "Neutral", "Satisfied", "Very satisf."))
+
+tt <- with(OPRSdata, round(prop.table(table(OPRSdata$DG04, OPRSdata$PR01), 1)*100, 2))
+tt_df <- as.data.frame(tt)
+tt_ord <- tt[order(tt[,1], decreasing=T),]
+tt_ord
+
+# to change color palette see e.g. http://www.sthda.com/english/wiki/ggplot2-colors-how-to-change-colors-automatically-and-manually
+# https://www.r-bloggers.com/50-shades-of-grey-according-to-r/ 
+# consider e.g. grey50 for the percentage labels 
+
+### Discipline vs. satisfaction with peer review ###
+df <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$PR01, exclude=c(-1)), 1)*100)
+df <- transform(df, mid_y = ave(df$Freq, df$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+df$mid_y <- round(df$mid_y,1)
+
+#ggplot(data = df, aes(x=Var1, y=Freq, fill=Var2, label=mid_y)) + geom_bar(stat = "identity") + geom_text(aes(y = mid_y), color="white", size=3.0) + coord_flip()
+
+ggplot(data=df, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("How satisfied are you with the peer review system \n used by scholarly journals?") +  xlab("Discipline") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+## comparing the Ware and the OpenAIRE study
+tPR01 <- table(OPRSdata$PR01)
+tPR01
+tPR01_perc <- addmargins(round(prop.table(tPR01)*100, 1))
+
+# 2007 Ware survey (n=3010) vs. OpenAIRE survey (n=3001) - leaving out the "don't knows"
+dfPR01XX <- data.frame("Very diss."=c(61 ,115), "Dissatisfied"=c(304, 503), "Neutral"=c(669, 691), "Satisf."=c(1794, 1474), "Very satisf."=c(182, 218), row.names=c("Ware", "OpenAIRE"))
+
+dfPR01 <- data.frame("Very diss."=c(20,115), "Dissatisfied"=c(160, 503), "Neutral"=c(501, 691), "Satisf."=c(1162, 1474), "Very satisf."=c(160, 218), row.names=c("Ware", "OpenAIRE"))
+# transform into table of percentages
+# transform into table of percentages
+dfPR01_prop <- round(prop.table(as.matrix(dfPR01), 1)*100, 1)
+dfPR01_prop <- as.data.frame(dfPR01_prop)
+dfPR01_prop$study <- c("Ware2015", "OpenAIRE2016")
+dfPR01_melted <- melt(dfPR01_prop)
+# plot the percentage distribution
+ggplot(data=dfPR01_melted, aes(x=study, y=value, fill=variable, label=round(value,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("How satisfied are you with the peer review system \n used by scholarly journals?") +  xlab("Study") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+
+### Region vs. satisfaction with peer review ###
+df_reg <- as.data.frame(prop.table(table(OPRSdata$DG03, OPRSdata$PR01, exclude=c(-1)), 1)*100)
+df_reg <- transform(df_reg, mid_y = ave(df_reg$Freq, df_reg$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+df_reg$mid_y <- round(df_reg$mid_y,1)
+
+ggplot(data=df_reg, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("How satisfied are you with the peer review system \n used by scholarly journals? - By region") +  xlab("Region") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="grey30", size=2.7)
+
+### Age vs. satisfaction with peer review ###
+df_age <- as.data.frame(prop.table(table(OPRSdata$DG02, OPRSdata$PR01, exclude=c(-1)), 1)*100)
+df_age <- transform(df_age, mid_y = ave(df_age$Freq, df_age$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+df_age$mid_y <- round(df_age$mid_y,1)
+
+ggplot(data=df_age, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("How satisfied are you with the peer review system \n used by scholarly journals? - By age group") +  xlab("Age") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+
+### questions PR02 and PR04 removed from survey ###
+#[PR02] !Scale (fully labeled)
+#PR system2
+#"Please indicate the extent to which you agree with the following statements"
+
+#PR02_01 The current peer review system is the best we can achieve
+#PR02_02 Peer review in journals needs a complete overhaul
+#PR02_03 Peer review is completely unnecessary
+#PR02_04 Peer review is holding back scientific communication
+#PR02_05 Scientific communication is greatly helped by peer review of published journal papers
+#PR02_06 Without peer review there is no control in scientific communication
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = agree
+#5 = Strongly agree
+#-1 = Don't know
+#-9 = Not answered
+
+##[PR04] !Scale (fully labeled)
+#PR System 3
+#"How effective do you think peer review is at meeting the following objectives?"
+
+#PR04_01 Peer review selects the best manuscripts for the journal
+#PR04_02 It effectively determines the originality of the manuscript
+#PR04_03 Peer review improves the quality of the published paper
+#PR04_04 It determines the importance of the findings
+#PR04_05 It detects plagiarism
+#PR04_06 It detects academic fraud
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = Agree
+#5 = Strongly agree
+#-1 = Don't<br>know
+#-9 = Not answered
+```
+
+When asked about their views on the peer review system as currently used by scholarly journals about every second respondent (`r sum(tPR01_perc[4:5])`%, N=`r sum(tPR01)`) expressed moderate or strong satisfaction. However, `r sum(tPR01_perc[1:2])` were dissatisfied while `r tPR01_perc[3]`% were neutral to the current state of peer review. 
+
+
+## Section FC: Factors 
+
+### How peer review may be modified
+- FC05_01 Open Reports: Peer review where review reports are published alongside the relevant article.
+- FC05_02 Open Identity: Peer review where authors and reviewers are aware of each other's identity.
+- FC05_03 Open Participation: Peer review that allows the wider community to contribute to the review process.
+- FC05_04 Open Interaction: Peer review that allows and encourages direct reciprocal discussion between author(s) and reviewers, as well as between reviewers.
+- FC05_05 Open pre-review manuscripts: Manuscripts are made immediately available (e.g., via pre#-print servers like ArXiv) in advance of any formal peer review procedures.
+- FC05_06 Open final-version commenting: Review or commenting on final "version of record" publications.
+- FC05_07 Open platforms: Peer review that is de-coupled from publishing in that it is facilitated by a different organisational entity than the venue of publication.
+
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+library(likert)
+library(plyr)
+library(reshape) # to avoid errors calls in likert with grouping
+
+OPRS_FC05 <- OPRSdata[ , 25:31]
+
+# have a look how many "don't know's" are present in the dataset
+summary(as.data.frame(lapply(OPRSdata[ , 25:31], factor, levels=c(-1, 1:5), labels=c("Don't know", "Much worse", "Worse", "Neutral", "Better", "Much better"))))
+
+# treat "don't know" as NA for the Likert plots
+OPRS_FC05 <- lapply(OPRS_FC05, factor, levels=c(1:5), labels=c("Much worse", "Worse", "Neutral", "Better", "Much better"))
+OPRS_FC05 <- as.data.frame(OPRS_FC05)
+
+summary(OPRS_FC05)
+
+# create likert heat table
+OPRS_FC05_lik <- likert(OPRS_FC05)
+plot(OPRS_FC05_lik, type="heat") + ggtitle("How peer review may be modified") 
+
+# change labels
+OPRS_FC05 <- rename(OPRS_FC05, c(FC05_01="Open Reports: Review reports are published alongside the article.", 
+FC05_02="Open Identity: Authors and reviewers are aware of each other's identity.", 
+FC05_03="Open Participation: The wider community may contribute to the review process.",
+FC05_04="Open Interaction: Direct reciprocal discussion between author(s) and reviewers, as well as between reviewers.",
+FC05_05="Open pre-review manuscripts: Manuscripts are made immediately available.",
+FC05_06="Open final-version commenting: Review or commenting on final version of record.",
+FC05_07="Open platforms: De-coupled from publishing in that it is facilitated by a different organisational entity."))
+OPRS_FC05 <- as.data.frame(OPRS_FC05)
+
+# create likert plot
+OPRS_FC05_lik <- likert(OPRS_FC05)
+plot(OPRS_FC05_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Statements on how peer review may be modified") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+#[FC05] !Scale (fully labeled)
+#factors of
+#"There are many ways peer review processes can be modified. Here we define some of these #innovations."
+
+#FC05_01 Open Reports: Peer review where review reports are published alongside the relevant #article.
+#FC05_02 Open Identity: Peer review where authors and reviewers are aware of each other's #identity.
+#FC05_03 Open Participation: Peer review that allows the wider community to contribute to the #review process.
+#FC05_04 Open Interaction: Peer review that allows and encourages direct reciprocal discussion #between author(s) and reviewers, as well as between reviewers.
+#FC05_05 Open pre-review manuscripts: Manuscripts are made immediately available (e.g., via pre#-print servers like ArXiv) in advance of any formal peer review procedures.
+#FC05_06 Open final-version commenting: Review or commenting on final "version of record" #publications.
+#FC05_07 Open platforms: Peer review that is de-coupled from publishing in that it is facilitated by a different organisational entity than the venue of publication.
+#1 = Much worse
+#2 = worse
+#3 = Neither better nor worse
+#4 = Better
+#5 = Much better
+#-1 = Don't<br>know
+#-9 = Not answered
+
+### Making manuscripts available early & OPR
+### look at FC05_05 by discipline
+#OPRSdata$FC05_05 <- factor(OPRSdata$FC05_05, levels=c(-1, 1:5), labels=c("Don't know", "Much worse", "Worse", "Neutral", "Better", "Much better"))
+OPRSdata$FC05_05 <- factor(OPRSdata$FC05_05, levels=c(1:5), labels=c("Much worse", "Worse", "Neutral", "Better", "Much better"))
+dfFC05_05 <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$FC05_05, exclude=c(-1)), 1)*100)
+ggplot(data=dfFC05_05, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Modifications of the peer review process: Open pre-review \n manuscripts") +  xlab("Discipline") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+
+### look at AG08_02 by discipline
+OPRSdata$AG08_02 <- factor(OPRSdata$AG08_02, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+dfAG08_02 <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$AG08_02, exclude=c(-1)), 1)*100)
+ggplot(data=dfAG08_02, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Manuscripts should be made openly accessible before \n peer review begins.") +  xlab("Discipline") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+``` 
+
+## Section AG: Attitudes
+Please indicate the extent to which you agree with the following statements:
+
+- AG01_01 The overall current system of scholarly communications works well.
+- AG01_02 Making research publications open access should be common scholarly practice.
+- AG01_03 Making research data open access should be common scholarly practice.
+- AG01_04 Open Peer Review should be common scholarly practice.
+
+- AG02_01 Published review reports provide useful information for the reader.
+- AG02_02 Publishing review reports will make reviewers less likely to make strong criticisms.
+- AG02_04 Publishing review reports will increase the quality of reviews.
+- AG02_05 Potential reviewers are less likely to agree to review for journals that publish review reports.
+- AG02_06 Potential authors are less likely to submit to journals that publish review reports.
+
+- AG06_01 Making reviewer identities open will make reviewers less likely to make strong criticisms.
+- AG06_02 Making reviewer identities open will increase the quality of reviews.
+- AG06_03 Reviewers should be allowed to choose whether or not to make their identities open.
+- AG06_04 Making reviewer identities open is fairer to authors.
+- AG06_05 Potential reviewers are less likely to agree to review for journals that make reviewer identities open.
+- AG06_06 Potential authors are less likely to submit to journals that make reviewer identities open.
+
+- AG07_01 Everybody with sufficient knowledge should be able to participate in the review process regardless of their formal qualifications or area of work.
+- AG07_02 Close circles of reviewers and editors hold back innovative research.
+- AG07_03 Reviewers are more likely to review if they are invited.
+
+- AG08_01 Increased interaction between authors & reviewers will result in better publications
+- AG08_02 Manuscripts should be made openly accessible before peer review begins.
+- AG08_03 Blog articles, online journal clubs and social media commentary on final-version publications are part of peer review.
+
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+library(likert)
+OPRS_AG01 <- OPRSdata[ , 32:35]
+OPRS_AG01 <- lapply(OPRS_AG01, factor, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+OPRS_AG01 <- as.data.frame(OPRS_AG01)
+OPRS_AG01_lik <- likert(OPRS_AG01)
+plot(OPRS_AG01_lik, type="heat") + ggtitle("Statements on scholarly communication") 
+
+# change labels
+OPRS_AG01 <- rename(OPRS_AG01, c(AG01_01="The overall current system of scholarly communications works well.", 
+AG01_02="Making research publications open access should be common scholarly practice.", 
+AG01_03="Making research data open access should be common scholarly practice.",
+AG01_04="Open Peer Review should be common scholarly practice."))
+OPRS_AG01 <- as.data.frame(OPRS_AG01)
+
+# reload reshape, otherwise likert with grouping throws an error 
+library(reshape) 
+# likert with grouping still throws an error...
+#OPRS_AG01_lik <- likert(OPRS_AG01, grouping=OPRSdata$DG03)
+
+OPRS_AG01_lik <- likert(OPRS_AG01)
+plot(OPRS_AG01_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Statements on scholarly communication") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+#[AG01] !Scale (fully labeled)
+#Attitudes General
+#Please indicate the extent to which you agree with the following statements.
+
+#AG01_01 The overall current system of scholarly communications works well.
+#AG01_02 Making research publications open access should be common scholarly practice.
+#AG01_03 Making research data open access should be common scholarly practice.
+#AG01_04 Open Peer Review should be common scholarly practice.
+#1 = strongly disagree
+#2 = disagree
+#3 = neither agree nor disagree
+#4 = agree
+#5 = strongly agree
+#-1 = Don't know
+#-9 = Not answered
+#[AG02] !Scale (fully labeled)
+
+## insert clustering here before labels are introduced
+### create dichotomous variables based on AG01_02 Open Access, AG01_03 Open Data, AG01_04 Open Peer Review - see note above, exclude the "don't knows"
+OPRSdata$AG01_02cl <- ifelse(OPRSdata$AG01_02 %in% c(1,2), -1, ifelse(OPRSdata$AG01_02 %in% c(4,5), 1, ifelse(OPRSdata$AG01_02 %in% c(3), 0, 9)))
+OPRSdata$AG01_04cl <- ifelse(OPRSdata$AG01_04 %in% c(1,2), -1, ifelse(OPRSdata$AG01_04 %in% c(4,5), 1, ifelse(OPRSdata$AG01_02 %in% c(3), 0, 9)))
+OPRSdata$AG01_03cl <- ifelse(OPRSdata$AG01_03 %in% c(1,2), -1, ifelse(OPRSdata$AG01_03 %in% c(4,5), 1, ifelse(OPRSdata$AG01_02 %in% c(3), 0, 9)))
+
+table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl)
+round(table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl)/3062 * 100, 2)
+table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl)
+round(table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl)/3062 * 100, 2)
+table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl)
+round(table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl)/3062 * 100, 2)
+### end clustering
+
+### consider to change: numeric labels appear this order in plots, from negative to positive, but Likert plot displays the positive sentiment on the LHS 
+OPRSdata$AG01_02 <- ordered(OPRSdata$AG01_02, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+OPRSdata$AG01_03 <- ordered(OPRSdata$AG01_03, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+OPRSdata$AG01_04 <- ordered(OPRSdata$AG01_04, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+table(OPRSdata$AG01_02cl); table(OPRSdata$AG01_03cl); table(OPRSdata$AG01_04cl)
+
+### Testing dependencies of variables: AG01_02 support for OA, AG01_03 support for Open Data, AG01_04 support for OPR
+# cluster positive - neutral - negative first 
+# otherwise the test may be inaccurate, see the discussion about values in the expected contingencies table, which can be accessed via e.g. chisq.test(table(OPRSdata$AG01_02, OPRSdata$AG01_03))$observed, cf. http://forums.psy.ed.ac.uk/R/P01582/essential-12/
+# from the website above: The test statistic is only approximately chi-squared, and becomes inaccurate when expected frequencies are "small" as defined using Cochran's rule-of-thumb, which states the test statistic is not close enough to Chi-Squared if: for a 2-D table any cell has expected frequency < 5, or for a larger table any cell has expected frequency < 1, or more than 20% of the cells have expected frequency < 5.
+
+## Chi-square on clustered/dichot. variables, leaving out the undecided views (don't know = 9)
+## To check the message "Chi-squared approximation may be incorrect", check the tables of expected values. Two tables of expected values show values < 5 but only one per table (< 20%). 
+
+### OA vs. open data
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl, exclude=c(9)))$observed
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl, exclude=c(9)))$expected
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl, exclude=c(9)))
+#Pearson's Chi-squared test
+## data:  table(OPRSdata$AG01_02cl, OPRSdata$AG01_03cl, exclude = c(9))
+## X-squared = 1459.3, df = 4, p-value < 2.2e-16
+
+# OA vs. OPR
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl, exclude=c(9)))$observed
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl, exclude=c(9)))$expected
+chisq.test(table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl, exclude=c(9)))
+#	Pearson's Chi-squared test
+## data:  table(OPRSdata$AG01_02cl, OPRSdata$AG01_04cl, exclude = c(9))
+## X-squared = 1236.2, df = 4, p-value < 2.2e-16
+
+# open data vs. OPR
+chisq.test(table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl, exclude=c(9)))$observed
+chisq.test(table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl, exclude=c(9)))$expected
+chisq.test(table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl, exclude=c(9)))
+#	Pearson's Chi-squared test
+## data:  table(OPRSdata$AG01_03cl, OPRSdata$AG01_04cl, exclude = c(9))
+## X-squared = 773.81, df = 4, p-value < 2.2e-16
+
+# We consider the combined negative sentiments (strongly disagree / disagree), the neutral and the combined positive sentiments (strongly agree / agree) attitudes for associated views on open access, open access to research data and open peer review (undecided views, i.e. "don't know", are not taken into account). We test e.g. the following hypothesis: Attitudes towards open access to publications and towards open access to research data are independent. A Chisquare test of independence shows that this hypothesis can be rejected (X-squared = 577.09, df = 4, p<0.001). Similarly, the hypothesis that the variables of attitudes towards open access to publications and open peer review are independent can be rejected (X-squared = 322.46, df = 4, p<0.001), and similarly for open access to research data and views on open peer review (X-squared = 279.27, df = 4, p<0.001). 
+
+# Views on OA to publications - by discipline
+dfAG01_02 <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$AG01_02, exclude=c(-1)), 1)*100)
+dfAG01_02 <- transform(dfAG01_02, mid_y = ave(dfAG01_02$Freq, dfAG01_02$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+dfAG01_02$mid_y <- round(dfAG01_02$mid_y,1)
+
+ggplot(data=dfAG01_02, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Making research publications open access should be \n common scholarly practice.") +  xlab("Discipline") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+# Views on OPR in general - by discipline
+dfAG01_04 <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$AG01_04, exclude=c(-1)), 1)*100)
+dfAG01_04 <- transform(dfAG01_04, mid_y = ave(dfAG01_04$Freq, dfAG01_04$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+dfAG01_04$mid_y <- round(dfAG01_04$mid_y,1)
+
+ggplot(data=dfAG01_04, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Open Peer Review should be common scholarly practice.") +  xlab("Discipline") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+
+# Views on OPR in general - by age group
+dfAG01_04_age <- as.data.frame(prop.table(table(OPRSdata$DG02, OPRSdata$AG01_04, exclude=c(-1)), 1)*100)
+dfAG01_04_age <- transform(dfAG01_04_age, mid_y = ave(dfAG01_04_age$Freq, dfAG01_04_age$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+dfAG01_04_age$mid_y <- round(dfAG01_04_age$mid_y,1)
+
+ggplot(data=dfAG01_04_age, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Open Peer Review should be common scholarly practice.") +  xlab("Age") +   ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+
+# Attitudes towards open reports
+OPRS_AG02 <- OPRSdata[ , 36:40]
+OPRS_AG02 <- lapply(OPRS_AG02, factor, levels=c(1:5), labels=c("Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"))
+OPRS_AG02 <- as.data.frame(OPRS_AG02)
+OPRS_AG02_lik <- likert(OPRS_AG02)
+plot(OPRS_AG02_lik, type="heat") + ggtitle("Attitudes towards open reports") 
+
+# change labels
+OPRS_AG02 <- rename(OPRS_AG02, c(AG02_01="Published review reports provide useful information for the reader", 
+AG02_02="Publishing review reports will make reviewers less likely to make strong criticisms.", 
+AG02_04="Publishing review reports will increase the quality of reviews.",
+AG02_05="Potential reviewers are less likely to agree to review for journals that publish review reports.", AG02_06="Potential authors are less likely to submit to journals that publish review reports."))
+OPRS_AG02 <- as.data.frame(OPRS_AG02)
+
+OPRS_AG02_lik <- likert(OPRS_AG02)
+plot(OPRS_AG02_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Attitudes towards open reports") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+
+#Attitudes Open Reports
+#"Please indicate the extent to which you agree with the following statements."
+
+#AG02_01 Published review reports provide useful information for the reader.
+#AG02_02 Publishing review reports will make reviewers less likely to make strong criticisms.
+#AG02_04 Publishing review reports will increase the quality of reviews.
+#AG02_05 Potential reviewers are less likely to agree to review for journals that publish review reports.
+#AG02_06 Potential authors are less likely to submit to journals that publish review reports.
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = Agree
+#5 = Strongly agree
+#-1 = Don't know
+#-9 = Not answered
+#[AG06] !Scale (fully labeled)
+
+
+###  Consider selected questions by Discipline, Region, Age group - e.g. AG02_05, AG06_05
+# by discipline
+dfAG06_05 <- as.data.frame(prop.table(table(OPRSdata$DG04, OPRSdata$AG06_05, exclude=c(-1)), 1)*100)
+dfAG06_05$Var2 <- factor(dfAG06_05$Var2 ,levels=c(1:5), labels=c("Str. disagr.", "Disagree", "Neutral", "Agree", "Strongly agree"))
+
+dfAG06_05 <- transform(dfAG06_05, mid_y = ave(df$Freq, dfAG06_05$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+dfAG06_05$mid_y <- round(dfAG06_05$mid_y,1)
+
+ggplot(data=dfAG06_05, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Potential reviewers are less likely to agree to review for \n journals that make reviewer identities open.") +  xlab("Discipline") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+# by age group
+### Age vs. satisfaction with peer review ###
+df_age_AG06_05 <- as.data.frame(prop.table(table(OPRSdata$DG02, OPRSdata$AG06_05, exclude=c(-1)), 1)*100)
+df_age_AG06_05 <- transform(df_age_AG06_05, mid_y = ave(df_age_AG06_05$Freq, df_age_AG06_05$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+df_age_AG06_05$mid_y <- round(df_age_AG06_05$mid_y,1)
+
+ggplot(data=df_age_AG06_05, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Potential reviewers are less likely to agree to review for \n journals that make reviewer identities open.") +  xlab("Age") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+# by region
+### Age vs. satisfaction with peer review ###
+df_reg_AG06_05 <- as.data.frame(prop.table(table(OPRSdata$DG03, OPRSdata$AG06_05, exclude=c(-1)), 1)*100)
+df_reg_AG06_05 <- transform(df_reg_AG06_05, mid_y = ave(df_reg_AG06_05$Freq, df_reg_AG06_05$Var1, FUN = function(val) cumsum(val) - (0.5 * val)))
+df_reg_AG06_05$mid_y <- round(df_reg_AG06_05$mid_y,1)
+
+ggplot(data=df_reg_AG06_05, aes(x=Var1, y=Freq, fill=Var2, label=round(Freq,1))) + geom_bar(stat="identity") + coord_flip() + ggtitle("Potential reviewers are less likely to agree to review for \n journals that make reviewer identities open.") +  xlab("Region") +  
+  ylab("Percentage")  + theme(legend.position = "bottom") + scale_fill_brewer(palette="RdYlGn", name = "Response") +   geom_text( color="grey30", size=2.7, position = position_stack(vjust = 0.5))
+#+ geom_text(aes(y=mid_y), color="darkgrey", size=2.7)
+
+
+#Attitudes Open IDs
+#"Please indicate the extent to which you agree with the following statements."
+
+OPRS_AG06 <- OPRSdata[ , 41:46]
+OPRS_AG06 <- lapply(OPRS_AG06, factor, levels=c(1:5), labels=c("Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"))
+OPRS_AG06 <- as.data.frame(OPRS_AG06)
+OPRS_AG06_lik <- likert(OPRS_AG06)
+plot(OPRS_AG06_lik, type="heat") + ggtitle("Attitudes towards open identities") 
+
+# change labels
+OPRS_AG06 <- rename(OPRS_AG06, c(AG06_01="Making reviewer identities open will make reviewers less likely to make strong criticisms.", 
+AG06_02="Making reviewer identities open will increase the quality of reviews.", 
+AG06_03 ="Reviewers should be allowed to choose whether or not to make their identities open.",
+AG06_04="Making reviewer identities open is fairer to authors.",
+AG06_05="Potential reviewers are less likely to agree to review for journals that make reviewer identities open.", 
+AG06_06 ="Potential authors are less likely to submit to journals that make reviewer identities open."))
+OPRS_AG06 <- as.data.frame(OPRS_AG06)
+
+OPRS_AG06_lik <- likert(OPRS_AG06)
+plot(OPRS_AG06_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Attitudes towards open identities") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+#AG06_01 Making reviewer identities open will make reviewers less likely to make strong #criticisms.
+#AG06_02 Making reviewer identities open will increase the quality of reviews.
+#AG06_03 Reviewers should be allowed to choose whether or not to make their identities open.
+#AG06_04 Making reviewer identities open is fairer to authors.
+#AG06_05 Potential reviewers are less likely to agree to review for journals that make reviewer #identities open.
+#AG06_06 Potential authors are less likely to submit to journals that make reviewer identities open.
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = Agree
+#5 = Strongly agree
+#-1 = Don't know
+#-9 = Not answered
+
+
+
+#[AG07] !Scale (fully labeled)
+
+#Attitudes Open Participation
+#"Please indicate the extent to which you agree with the following statements."
+
+OPRS_AG07 <- OPRSdata[ , 47:49]
+OPRS_AG07 <- lapply(OPRS_AG07, factor, levels=c(1:5), labels=c("Strongly disagree", "Disagree", "Neutral", "Agree", "Strongly agree"))
+OPRS_AG07 <- as.data.frame(OPRS_AG07)
+OPRS_AG07_lik <- likert(OPRS_AG07)
+plot(OPRS_AG07_lik, type="heat") + ggtitle("Attitudes towards open participation") 
+
+# change labels
+OPRS_AG07 <- rename(OPRS_AG07, c(AG07_01="Everybody with sufficient knowledge should be able to participate in the review process regardless of their formal qualifications or area of work.", 
+AG07_02="Close circles of reviewers and editors hold back innovative research.", 
+AG07_03 ="Reviewers are more likely to review if they are invited."))
+OPRS_AG07 <- as.data.frame(OPRS_AG07)
+
+OPRS_AG07_lik <- likert(OPRS_AG07)
+plot(OPRS_AG07_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Attitudes towards open participation") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+#AG07_01 Everybody with sufficient knowledge should be able to participate in the review process #regardless of their formal qualifications or area of work.
+#AG07_02 Close circles of reviewers and editors hold back innovative research.
+#AG07_03 Reviewers are more likely to review if they are invited.
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = Agree
+#5 = Strongly agree
+#-1 = Don't know
+#-9 = Not answered
+#[AG08] !Scale (fully labeled)
+
+#Attitudes Open Others
+#"Please indicate the extent to which you agree with the following statements."
+
+# use original data here, to ignore relabeling as used in former calculations on AG08 variables
+OPRS_AG08 <- OPRSdata_orig[ , 50:52]
+OPRS_AG08 <- lapply(OPRS_AG08, factor, levels=c(1:5), labels=c("Strongly disagr.", "Disagree", "Neutral", "Agree", "Strongly agr."))
+OPRS_AG08 <- as.data.frame(OPRS_AG08)
+OPRS_AG08_lik <- likert(OPRS_AG08)
+plot(OPRS_AG08_lik, type="heat") + ggtitle("Attitudes towards statements") 
+
+# change labels
+OPRS_AG08 <- rename(OPRS_AG08, c(AG08_01="Increased interaction between authors & reviewers will result in better publications.", 
+AG08_02="Manuscripts should be made openly accessible before peer review begins.", 
+AG08_03 ="Blog articles, online journal clubs and social media commentary on final-version publications are part of peer review."))
+OPRS_AG08 <- as.data.frame(OPRS_AG08)
+
+OPRS_AG08_lik <- likert(OPRS_AG08)
+plot(OPRS_AG08_lik, centered = FALSE, wrap = 30, low.color='#FFAA4D', high.color='#009ACE') + ggtitle("Attitudes towards statements") +  theme(plot.title = element_text(size = 10,colour="black")) + ylab("Percentage") + theme(axis.title.y = element_text(size = 10, colour = 'black')) 
+
+#AG08_01 Increased interaction between authors & reviewers will result in better publications
+#AG08_02 Manuscripts should be made openly accessible before peer review begins.
+#AG08_03 Blog articles, online journal clubs and social media commentary on final-version publications are part of peer review.
+#1 = Strongly disagree
+#2 = Disagree
+#3 = Neither agree nor disagree
+#4 = Agree
+#5 = Strongly agree
+#-1 = Don't know
+#-9 = Not answered
+#[AG03] !Multiple Choice
+
+#Experience Open Report
+#"We defined "Open Reports" as peer review where review reports are published alongside the relevant article."
+
+```
+
+### Experiences with Open Reports, Open IDs, Open Participation
+
+Respondents were asked if they have experiences with open reports, open IDs or open participation in the roles of author and/or reviewer (or neither). 
+
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+
+Role <- c("Reviewer", "Author", "Neither")
+Freq <- c(table(OPRSdata$AG03_01)[2], table(OPRSdata$AG03_02)[2],table(OPRSdata$AG03_03)[2])
+tAG03_df <- data.frame(Role, Freq)
+tAG03_df$Perc <- round(tAG03_df$Freq/sum(table(OPRSdata$AG03))*100,1)
+tAG03_df
+
+#AG03 Experience Open Report: Residual option (negative) or number of selected options
+#Integer
+#AG03_01 reviewer
+#AG03_02 author
+#AG03_03 neither
+#1 = Not checked
+#2 = Checked
+
+Role <- c("Reviewer", "Author", "Neither")
+Freq <- c(table(OPRSdata$AG04_01)[2], table(OPRSdata$AG04_02)[2],table(OPRSdata$AG04_03)[2])
+tAG04_df <- data.frame(Role, Freq)
+tAG04_df$Perc <- round(tAG04_df$Freq/sum(table(OPRSdata$AG04))*100,1)
+tAG04_df
+
+#[AG04] !Multiple Choice
+#Experience Open ID
+#"We defined "Open Identity" as peer review where authors and reviewers are aware of each #other's identity"
+
+#AG04 Experience Open ID: Residual option (negative) or number of selected options
+#Integer
+#AG04_01 reviewer
+#AG04_02 author
+#AG04_03 neither
+#1 = Not checked
+#2 = Checked
+
+Freq <- c(table(OPRSdata$AG05_01)[2], table(OPRSdata$AG05_02)[2],table(OPRSdata$AG05_03)[2])
+tAG05_df <- data.frame(Role, Freq)
+tAG05_df$Perc <- round(tAG05_df$Freq/sum(table(OPRSdata$AG05))*100,1)
+tAG05_df
+
+#[AG05] !Multiple Choice
+#Experience Open Participation
+#"We defined "Open Participation" as peer review that allows the wider community to contribute to the review p..."
+
+#AG05 Experience Open Participation: Residual option (negative) or number of selected options
+#Integer
+#AG05_01 reviewer
+#AG05_02 author
+#AG05_03 neither
+#1 = Not checked
+#2 = Checked
+
+# percentage of respondents with experience in at least one of the 3 core OPR traits (open reports, open IDs, open participation)
+OPRexp_sub <- filter(OPRSdata, AG03_01==2 | AG03_02==2 | AG04_01==2 | AG04_02==2 | AG05_01==2 | AG05_02==2)
+nexp_sub <- round(nrow(OPRexp_sub)/nrow(OPRSdata)*100, 2)
+nexp_sub
+
+# reviewer or author roles together
+ttOPRexp <- data.frame("reviewer/author"=c(nrow(filter(OPRSdata, AG03_01==2 | AG03_02==2)), nrow(filter(OPRSdata, AG04_01==2 | AG04_02==2)), nrow(filter(OPRSdata, AG05_01==2 | AG05_02==2))), neither=c(nrow(filter(OPRSdata, AG03_03==2)), nrow(filter(OPRSdata, AG04_03==2)), nrow(filter(OPRSdata, AG05_03==2))), trait=c("open reports", "open ID", "open participation"))
+ttOPRexp <- melt(ttOPRexp)
+
+#dfexp = data.frame(no=c(nrow(OPRSdata)-nrow(OPRexp_sub), 1350, 1673, 1708), yes=c(nrow(OPRexp_sub), 1712, 1389, 1354), trait=c("overall", "open reports", "open ID", "open participation"))
+dfexp = data.frame(no=c(nrow(OPRSdata)-nrow(OPRexp_sub), ttOPRexp$value[4:6]), yes=c(nrow(OPRexp_sub), ttOPRexp$value[1:3]), trait=c("overall", "open reports", "open ID", "open participation"))
+dfexp_melted <- melt(dfexp)
+
+# experiences with OPR traits as author or reviewer
+ggplot(dfexp_melted, aes(trait, value, fill=variable)) + ggtitle("Experiences with Open Peer Review traits") +  xlab("Trait") +  
+ ylab("Percentage") + geom_bar(position="fill", stat="identity") + guides(fill=guide_legend(reverse=TRUE)) + coord_flip()
+
+dfexp$yes_perc <- round(dfexp$yes/3062*100, 1)
+dfexp
+```
+
+Overall, `r nexp_sub`(`r nrow(OPRexp_sub)` respondents) of all respondents had experience in at least one of the three core OPR traits (open reports, open IDs, open participation). 
+
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+### question not used in survey ###
+#[PF01] !Selection
+#platform general
+#"Have you ever used an alternative (open) publishing/review platform?"
+
+#PF01 platform general
+#1 = No
+#2 = Yes
+#-9 = Not answered
+
+### Question not used in survey ###
+#[PF02] !Multiple Choice
+#platform incentive
+#"What would encourage you to use open review tools/methods?"
+
+#PF02 platform incentive: Residual option (negative) or number of selected options
+#Integer
+#PF02_01 Reviewer`s open ID
+#PF02_02 Open review report
+#PF02_03 Open dissemination of scholarly results
+#PF02_04 Community involvement in the review process
+#PF02_05 Independent review system (separated from publishing)
+#PF02_06 [No Description] 06
+#1 = Not checked
+#2 = Checked
+#[PF03] Text Input
+#PF03_01 Which one?
+#Free text
+
+# write text input to file
+#badPF03_01 <- is.na(OPRSdata$PF03_01)
+#platform <- OPRSdata$PF03_01[!badPF03_01]
+#write.csv(platform, ".../platform.csv", row.names = FALSE)
+#length(platform)
+
+```
+
+## Section D2: Definition End
+Do you agree with this definition of Open Peer Review? Comments written to text files. 
+
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+##[D201] !Extended Selection
+#Definition
+#"Do you agree with this definition of Open Peer Review" 
+
+OPRSdata$D201 <- factor(OPRSdata$D201, levels=c(1,2), labels=c("Yes", "No"))   
+tD201 <- as.data.frame(table(OPRSdata$D201, exclude=c(NA)))
+tD201$Perc <- round(tD201$Freq/sum(tD201$Freq)*100, 1)
+
+#D201 Definition
+#1 = Yes, I agree
+#2 = No, I don't agree
+#-9 = Not answered
+#[D202] Text Input
+#Definition corr
+#"If you do not agree, why?"
+
+#D202_01 [01]
+#Free text
+#[D203] Text Input
+#General Comment
+#"Do you have any other comments?"
+
+#D203_01 [01]
+#Free text
+
+# free text input
+defnotagr <- OPRSdata$D202_01[!(OPRSdata$D202_01 %in% c("", " "))]
+# consider saving the file 
+#write.csv(defnotagr, ".../OPR_survey/defnotagr.csv", row.names = FALSE)
+length(defnotagr)
+
+# select final comments of OPR definition etc. and write to file
+gencomment <- OPRSdata$D203_01[!(OPRSdata$D203_01 %in% c("", " ", ".", "-"))]
+# consider saving the file 
+#write.csv(gencomment, ".../OPR_survey/gencomment.csv", row.names = FALSE)
+length(gencomment)
+
+# leave out all null comments on OPR definition, select relevant variables (CASE, subject area, STM/HSS, OPR roles, comments) and save to file
+OPRcomments <- OPRSdata %>% filter(!(D203_01 %in% c("", " ", "-", ".", "xxx", "No", "no", "NO", "NO.", "No.", "no.", "No!", "No, please", "No, I don't", "No. Thanks", "no ,thans.", "nope", "not now", "Nope", "None", "None.", "NONE", "none", NA, "N/A", "N/A.", "n/a", "NA", "Nil", "nil", "NIL", "Thanks", "Not", "nothing, thanks", "no, Thanks", "No, I have not.", "No this time", "No other comments.", "no other comments", "No other comments.", "I no comment.", "No comments", "None at this time", "NO_I do not have others.", "I don't have.", "no<br>", "No, I don't.", "Nothing", "No, I have not. ", "best success!", "thanks", "Not at this point."))) %>% select(CASE, DG04, disccl, DG06_01:DG06_05, D203_01)
+# consider saving the file 
+#write.csv(OPRcomments, ".../OPRcomments.csv", row.names = FALSE)
+dim(OPRcomments)
+
+```
+
+### Some Manova tests on subsets, e.g. DG02 age, DG03 region, DG04 discipline 
+```{r echo=FALSE, cache=FALSE, message=FALSE}
+require(stats)
+require(agricolae)
+
+# age cluster - combine all under age 35 as the under 25 age-group is very small
+OPRSdata$age <- ifelse(OPRSdata$DG02 %in% c(1,2), 2, OPRSdata$DG02)
+OPRSdata$age <- ordered(OPRSdata$age, levels=c(2:6), labels=c("under 35", "35-44", "45-54", "55-64", "over 64"))
+
+# copy for testing
+OPRSdata_test <- OPRSdata 
+
+#AG01_01 The overall current system of scholarly communications works well.
+#AG01_02 Making research publications open access should be common scholarly practice.
+#AG01_03 Making research data open access should be common scholarly practice.
+#AG01_04 Open Peer Review should be common scholarly practice.
+
+# Manova test for a set of questions on Age = DG02 - replace DG02 by age cluster "age"
+fitage <- manova(cbind(AG01_01, AG01_02, AG01_03, AG01_04) ~ age, data=OPRSdata_test)
+summary(fitage)
+summary.aov(fitage)
+
+# if significant continue on variable level - open access
+fitCla2 <- aov(as.numeric(AG01_02) ~ age, data=OPRSdata_test)
+HSD.test(fitCla2, "age", group=FALSE, console=TRUE)
+
+# research data
+fitCla3 <- aov(as.numeric(AG01_03) ~ age, data=OPRSdata_test)
+HSD.test(fitCla3, "age", group=FALSE, console=TRUE)
+
+# open peer review
+fitCla4 <- aov(as.numeric(AG01_04) ~ age, data=OPRSdata_test)
+HSD.test(fitCla4, "age", group=FALSE, console=TRUE)
+
+
+### by region
+fitregion <- manova(cbind(AG01_01, AG01_02, AG01_03, AG01_04) ~ DG03, data=OPRSdata_test)
+summary(fitregion)
+summary.aov(fitregion)
+# if significant continue on variable level 
+fitCla1_reg <- aov(as.numeric(AG01_01) ~ DG03, data=OPRSdata_test)
+HSD.test(fitCla1_reg, "DG03", group=FALSE, console=TRUE)
+
+``` 
+
+When asked if the current system of scholarly communication works well, there was significantly less agreement in the younger generation of researchers, in particular when comparing the 25-34 year-olds and the under 25 year-olds with the generations 45 and older. Overall, the younger generations provided somewhat stronger support for the general statements on openness practices. There was a significantly stronger support for open access in the generations 25-44 compared to the generations 45-64 (and the 25-34 year-olds compared to the ones over 64). 
+Making research data open access was significantly stronger endorsed as a common scholarly practice by the 25-44 year-olds compared to the 55-64 year-olds. 
+In addition, open peer review was significantly stronger supported as a common scholarly practice when comparing the 25-34 and the 45-64 year-olds and when comparing the 35-44 and 55-64 year-olds. 
